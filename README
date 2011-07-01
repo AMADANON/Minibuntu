@@ -54,6 +54,7 @@ Thus was created this project. It creates stand-alone filesystems, suitable for 
 	1.004 Install only the latest version of a given package. Package version naming is quite complex, so leave up to dpkg.
 	1.005 Allow (some) overriding of packages
 	1.006 Compile package data into GDBM file, for quick retrieval without rebuilding package list each time.
+	1.007 Utility to list GDBM (packagedb, overrides) - lister.pl
 
 2. In progress.
 	2.001 Tidy code - Create a perl object for the packagedb, and an object for each package.
@@ -72,9 +73,15 @@ Thus was created this project. It creates stand-alone filesystems, suitable for 
 	3.011 3 levels of packages - Local changes (highest priority), Minibuntu shared, Ubuntu or Debian stock. Shared should be audited very carefully, and should never conflict with (override) Ubuntu stock - careful naming schedule?
 	3.012 Divide files in packages into 3 groups: "install", "documentation", or "dont install"
 	3.013 Check for file changes.
+	3.014 Allow overriding of permissions & ownership
+	3.015 Fakeroot, where neccesary & possible.
 
  - 3 - Usage instructions ---------------------------------------------------
 Ok, so this is what you've really come here for. How do you operate this dag-nabbed device?
+
+3.1 - build.pl
+
+This does most of the heavy lifting.
 
 ./build.pl help
 	Show basic instructions on how to use this doo-hickey.
@@ -90,3 +97,20 @@ Ok, so this is what you've really come here for. How do you operate this dag-nab
 
 ./build.pl build <list of packages>
 	Builds a filesystem in root-target/ with the selected packages, and all their dependencies.
+
+3.2 lister.pl
+Shows the contents of one of the databases. For debugging purposes.
+
+./lister.pl <databasename>
+	List the contents of one of the package databases. 
+	The database should probably either be packagedb.dbm (for stock Ubuntu/Debian packages), or overrides.dbm (for, well, overrides).
+
+./lister.pl <databasename> <package>
+	List all info about all versions of a specified package (e.g. 'libc6')
+
+./lister.pl <databasename> <package> +
+	(The '+' is a literal in this case)
+	List all info about the latest version of a specified package
+
+./lister.pl <databasename> <package> <version>
+	List all info about a specified version of the specified package
