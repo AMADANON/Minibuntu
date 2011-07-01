@@ -1,5 +1,131 @@
 #!/usr/bin/perl
 
+
+package Package;
+
+sub new {
+	my ($type,$name,$package,$override,$packagedb)=@_;
+	my $self={"type"=>$type,"name"=>$name,"package"=>$package,"override"=>$override,"packagedb"=>$packagedb};
+	bless($self,$type);
+	return $self;
+}
+
+sub get {
+	my ($self,$key)=@_;
+	my ($val)=$self->{"package"}->{$key};
+	if (exists $self->{"override"}->{"Replace"}->{$key}->{$val}) {
+		$val=$self->{"override"}->{"Replace"}->{$key}->{$val};
+	}
+	return $val;
+}
+
+sub dirty {
+	my ($self,$key)=@_;
+	return (exists $self->{"override"}->{"Replace"}->{$key}->{$self->{"package"}->{$key}});
+}
+
+sub set {
+	my ($self,$key,$value)=@_;
+	if ($key eq "Parent") {
+		$self->{"override"}->{$key}=$value;
+	} else {
+		$self->{"override"}->{"Replace"}->{$key}->{$self->{"package"}->{$key}}=$value;
+	}
+	$self->{"packagedb"}->save($self->{"name"},$self->{"override"});
+}
+
+sub alldeps {
+	my ($self)=@_;
+	my (@deps);
+	foreach (split(/\s*,\s*/,$self->get("Depends")), split(/\s*,\s*/,$self->get("Pre-Depends"))) {
+		if ($_=~/^(\S+)(\s+[^\|]*|)$/) {
+			push(@deps,$1);
+		}
+	}
+	return @deps;
+}
+
+sub debfile {
+	my ($self)=@_;
+	if ($self->{"package"}->{"Package"}) {
+		my $deb;
+		$deb=join("_",$self->{"package"}->{"Package"},$self->{"package"}->{"Version"},$self->{"package"}->{"Architecture"});
+		$deb=~s/:/\%3a/g;
+		return "$deb.deb";
+	} else {
+		return;
+	}
+}
+
+sub install {
+	my ($self,$source,$target)=@_;
+	my ($debfile)=$self->debfile();
+	if ($debfile) {
+		if (-f $debfile) {
+			system("ar p $source/".$self->debfile()." data.tar.gz | tar -C $target -xzf -");
+		} else {
+			die "Missing file debfile $debfile\n";
+		}
+	}
+}
+
+package PackageDb;
+use GDBM_File;
+use Data::Dumper;
+$Data::Dumper::Terse=1;
+$Data::Dumper::Sortkeys=1;
+
+sub new {
+	my ($type,$name)=@_;
+	my $self={type=>$type};
+	bless($self,$type);
+	return $self;
+}
+
+sub checkdbm {
+	my ($self,$path)=@_;
+	if ($path eq "") { $path="."; }
+	return (-e "$path/packagedb.dbm");
+}
+
+sub tie {
+	my ($self,$path)=@_;
+	if ($path eq "") { $path="."; }
+	die "Could not find $path/packagedb.dbm\n" unless ($self->checkdbms($path));
+	$self->{"packagedb"}={};
+	$self->{"overrides"}={};
+	tie(%{$self->{"packagedb"}},"GDBM_File","$path/packagedb.dbm",&GDBM_WRCREAT,0640) || die "Could not open $path/packagedb.dbm: $!";
+	tie(%{$self->{"overrides"}},"GDBM_File","$path/overrides.dbm",&GDBM_WRCREAT,0640) || die "Could not open $path/overrides.dbm: $!";
+}
+
+# Returns the most recent version of a package
+sub mostrecent {
+	my ($package)=@_;
+	my (@keys)=sort {system("dpkg","--compare-versions",$a,"lt",$b)==0?-1:1} keys %$package;
+	return $package->{pop(@keys)};
+}
+
+
+sub fetch {
+	my ($self,$package)=@_;
+	my ($db,$ov);
+	if (exists $self->{"overrides"}->{$package}) { 
+		$ov=eval($self->{"overrides"}->{$package});
+		if ($ov->{"Parent"}) {
+			$db=&mostrecent(eval($self->{"packagedb"}->{$ov->{"Parent"}}));
+		}
+	} elsif (exists $self->{"packagedb"}->{$package}) { 
+		$db=&mostrecent(eval($self->{"packagedb"}->{$package}));
+	}
+	$self->{"seen"}->{$package}=new Package($db,$ov,$self);
+}
+
+sub save {
+	my ($self,$key,$value)=@_;
+	$self->{"overrides"}->{$key}=Dumper($value);
+}
+
+package main;
 $|=1;
 use Cwd;
 use File::Path qw(make_path rmtree);
