@@ -89,6 +89,12 @@ sub edit {
 				chomp($newdata);
 				$package->set($edit,$newdata);
 				$pdb->save($package);
+				@packages=$pdb->render_simple_dependencies(@specified_packages);
+				for ($packagenumber=0; ($packagenumber<=$#packages) && ($packages[$packagenumber]->{"name"} ne $package->{"name"}); $packagenumber++) { };
+				if ($packagenumber>$#packages) {
+					die "Could not find package?!?!";
+				}
+				$package=$packages[$packagenumber];
 			}
 		}
 	}
@@ -97,9 +103,10 @@ sub edit {
 $pdb=new PackageDb($arch);
 my $commands={
 	"help"=>sub {
-		print "$0 builddb		Reloads all the packages, builds database\n";
-		print "$0 edit <package>	Edits the package overrides\n";
-		print "$0 build <packages>	Builds the machine specified\n";
+		print "$0 builddb			Reloads all the packages, builds database\n";
+		print "$0 edit <package>		Edits the package overrides\n";
+		print "$0 build <packages>		Builds the machine specified\n";
+		print "$0 get-kernel <kernelversion> 	Downloads the specified kernel (e.g. generic, server, virtual)\n";
 	},
 	"builddb"=>sub {
 		$pdb->setup();
@@ -117,6 +124,21 @@ my $commands={
 		shift(@ARGV);
 		$pdb->tie();
 		$pdb->build(@ARGV);
+	},
+	"get-kernel"=>sub {
+		die "Before fetching the kernel, you must rebuild the db:\n\t$0 builddb\n" unless ($pdb->checkdbm());
+		unless ($ARGV[1]) {
+			print "$0 get-kernel <kernelversion> 	Downloads the specified kernel (e.g. generic, server, virtual)\n";
+			exit(1);
+		}
+		$pdb->tie();
+		foreach ($pdb->fetch("linux-image-$ARGV[1]")->allsimpledepends()) {
+			if ($_=~/^linux-image-/) {
+				$pkg=$pdb->fetch($_);
+				$pdb->aptget("install --assume-yes --download-only ".join(" ",$pkg->{"name"}));
+				system($pkg->datatarcmd()."-xv --transform 's/.*\\///' --show-transformed-names --wildcards './boot/vmlinuz-*'");
+			}
+		}
 	},
 };
 unless (exists $commands->{$ARGV[0]}) {

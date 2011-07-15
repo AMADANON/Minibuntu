@@ -5,8 +5,8 @@ package Package;
 use Data::Dumper;
 
 sub new {
-	my ($type,$name,$package,$override)=@_;
-	my $self={"name"=>$name,"package"=>$package,"override"=>$override};
+	my ($type,$name,$package,$override,$debpath)=@_;
+	my $self={"name"=>$name,"package"=>$package,"override"=>$override,"debpath"=>$debpath};
 	bless($self,$type);
 	return $self;
 }
@@ -28,6 +28,42 @@ sub getbase {
 	return $self->{"package"}->{$key};
 }
 
+sub deb_contents {
+	my ($self)=@_;
+	unless ($self->{"files"}) {
+		my ($contents);
+		$contents="ar t ".$self->{"debpath"}.$self->debfile();
+		$contents=`$contents`;
+		$self->{"files"}=[split("\n",$contents)];
+	}
+	return @{$self->{"files"}};
+}
+
+sub data_compression {
+	my ($self)=@_;
+	unless ($self->{"compression"}) {
+		foreach ($self->deb_contents()) {
+			if ($_=~/^data.tar.(\S+)$/) {
+				$self->{"datafile"}=$_;
+				$self->{"compression"}=$1;
+			}
+		}
+	}
+	if ($self->{"compression"} eq "bz2") {
+		$self->{"compressionflag"}="j";
+	} elsif ($self->{"compression"} eq "gz") {
+		$self->{"compressionflag"}="z";
+	}
+	return $self->{"compression"};
+}
+
+sub datatarcmd {
+	my ($self)=@_;
+	my ($comp,$flag);
+	$comp=$self->data_compression();
+	return "ar p ".$self->{"debpath"}.$self->debfile()." ".$self->{"datafile"}."| tar  -".$self->{"compressionflag"}."f - ";
+}
+
 sub dirty {
 	my ($self,$key)=@_;
 	my ($val)=$self->{"package"}->{$key};
@@ -47,6 +83,9 @@ sub hasoverride {
 
 sub set {
 	my ($self,$key,$value)=@_;
+	if ((%{$self->{"package"}}>1) && (%{$self->{"override"}}==0) && (!exists $self->{"override"}->{"Package"})) {
+		$self->{"override"}->{"Package"}=$self->{"name"};
+	}
 	if ($key eq "Package") {
 		$self->{"override"}->{$key}=$value;
 	} else {
@@ -150,7 +189,7 @@ sub fetch {
 	my ($self,$package)=@_;
 	die if ($package eq "");
 	my ($db,$ov);
-	if (exists $self->{"overrides"}->{$package}) { 
+	if (exists $self->{"overrides"}->{$package}) {
 		$ov=eval($self->{"overrides"}->{$package});
 		if (exists $ov->{"Package"}) {
 			$db=$self->mostrecent(eval($self->{"packages"}->{$ov->{"Package"}}));
@@ -161,7 +200,7 @@ sub fetch {
 		#die "Unknown package $package";
 		return new Package($package);
 	}
-	return new Package($package,$db,$ov);
+	return new Package($package,$db,$ov,$self->{"path"}."/var/cache/apt/archives/");
 }
 
 # to check

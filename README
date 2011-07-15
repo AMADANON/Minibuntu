@@ -8,6 +8,9 @@
 		2.2 In progress
 		2.3 To-do
 	3 Usage instructions
+		3.1 build.pl
+		3.2 lister.pl
+		3.3 A complete (?) example
 
  - 1.1 - VERY IMPORTANT, READ THIS -------------------------------------------
 SUMMARY: If you distribute installs made by this software, you are likely to be in breach of the software license.
@@ -98,6 +101,9 @@ This does most of the heavy lifting.
 ./build.pl build <list of packages>
 	Builds a filesystem in root-target/ with the selected packages, and all their dependencies.
 
+./build.pl get-kernel <which kernel>
+	Downloads a specific kernel, e.g. generic, server, or virtual, and puts it in the current directory.
+
 3.2 lister.pl
 Shows the contents of one of the databases. For debugging purposes.
 
@@ -114,3 +120,96 @@ Shows the contents of one of the databases. For debugging purposes.
 
 ./lister.pl <databasename> <package> <version>
 	List all info about a specified version of the specified package
+
+3.3 A complete (?) example
+Ok, so here we are going to run through an example.
+
+Say you wanted to build a real simple box, running from qemu, with busybox, and nothing else.
+
+3.3.1 We need a sources list. You can use your existing Ubuntu or Debian one, or you can go to http://repogen.simplylinux.ch/ and build a new (Ubuntu) one. Save the sources.list in the main directory.
+
+3.3.2 Build the package database:
+./build.pl builddb
+This downloads the latest package lists, and compiles them into a database. It will take a while to download them.
+
+3.3.3 Edit your machine part 1 - Dependencies:
+You can specify any packages you want on the commandline, but I prefer to put just the name of the machine I'm building:
+./build.pl edit _mybusybox
+
+This creates a new (local) package. By starting it with an underscore, it's clear that it's a home-made package, and will never conflict with an Ubuntu or Debian package name.
+
+You will see a list of packages (currently, only _mybusybox). Lets open up that package (press "1" and enter). You will see that it has a name (_mybusybox), it depends on nothing (Depends and Pre-Depends), provides nothing, and nothing depends on it (ReverseDeps).
+
+Now we will change it - _mybusybox will depend on busybox. Press "3" and enter to edit the depends, type in busybox (this is a comma-seperated list), and press enter. Then press "6" and enter to go back to the main menu.
+
+You should now see a lot more packages. You said _mybusybox depends on busybox, but busybox in turn depends on other packages.
+
+But wait a minute, why is tzdata there? We don't care about tzdata, and we don't want it clogging up diskspace. So select tzdata, press enter, and see why it is there. ReverseDeps (what depends on this package?) shows that it's there because libc6 depends on tzdata. Fine for a desktop box, not fine for our mini box.
+
+Select ReverseDeps, and you will jump to the package that depends on it (if there is more than one, you will be asked which reverse dep you want). Indeed, we see that libc6 depends on a lot of things. Lets clear that out - edit the depends, think about what libc6 *really* depends on, and type it in. In my case, it depends only on libgcc1, so I'll change it to that.
+
+Now back to the main menu. You'll notice that the unneeded packages disappear as soon as they're not needed, so you can easily see where you're up to.
+
+Going on, you might decide that gcc-4.4-base is also not needed - going into the package, we see it is there because libgcc1 "requires" it - we disagree, so we go to reverse-depends to libgcc1, and change the depends so it only needs libc6.
+
+
+3.3.4 Edit your machine part 2 - Removing files:
+This is a future feature. TODO.
+
+3.3.5 Edit your machine part 3 - Adding files:
+This is a future feature. TODO.
+
+3.3.6 Edit your machine part 4 - Renaming files:
+This is a future feature. TODO.
+
+3.3.7 Edit your machine part 5 - Compiling from source:
+This is a future feature. TODO.
+
+Once you're happy with your box, quit out. You do not need to save; every change you make will be immediately saved.
+
+3.3.8 Build your machine
+./build.pl build _mybusybox
+
+This downloads the packages you have selected, unpacks them, shuffles things around as you requested, and builds a root filesystem. Please note that, due to the way that minibuntu works, many other packages may be downloaded which you don't need. The files are placed in the "target" directory, which is first removed if it exists.
+
+TODO: Build the filesystem as iso, initrd, ext2/3/4, or any other you like.
+
+Copy a file into target/ called init, make it executable, and put the following text in it:
+
+#!/bin/busybox ash
+/bin/busybox ash
+
+
+At this point, you can, as root, and run:
+
+chroot target/ /init
+
+Which sets up a fake environment with target as the root, and then runs /bin/busybox ash (which is a shell). Everything should be as you want it, you can explore your environment, without having to wait for anything to boot up. This will only work for basic things - don't mount partitions in your new space or try to do networky things unless you know what you're doing.
+
+3.3.9 Running initrd under qemu or network boot
+Make sure your image has a file called init, in the root directory (i.e. target/init) executable, 
+
+First, you will need an initrd filesystem. This will eventually be part of 3.3.8, until then:
+
+To build an initrd filesystem, first build the filesystem, then:
+bash -c "cd target && find . | cpio -H newc -o | gzip" > root.cpio.gz
+
+You will also need a kernel. To get the latest kernel:
+./build get-kernel virtual
+(Instead of "virtual", you could also specify one of the other kernels available - currently generic and server should work, depending on your distro).
+
+This downloads a file (a kernel) called vmlinuz-(something)-virtual.
+
+Then you can run qemu:
+
+qemu -kernel vmlinuz-(something)-virtual -initrd root.cpio.gz -append quiet
+
+Replace the (something) with the version of the kernel.
+
+If all goes well, qemu should start up, and after a few seconds (or more depending on your computer) you should see the prompt:
+
+/ # _
+
+Congratulations! You have booted your first minibuntu box.
+
+The entire filesystem is running in memory, from an initrd filesystem. When you reboot, everything will be reset back to default.
