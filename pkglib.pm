@@ -33,7 +33,13 @@ sub getfilesstate {
 		}
 		$cmd=$self->datatarcmd()." -tv";
 		@files=`$cmd`;
-		%files=map {if ($_=~/^((.).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*)/) {($7,{perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2})}} @files;
+		foreach (@files) {
+			if ($_=~/^((l).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*) \-\> .*/) {
+				$files{$7}={perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2};
+			} elsif ($_=~/^((.).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*)/) {
+				$files{$7}={perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2};
+			}
+		}
 		$self->{"override"}->{"files"}={%files};
 		$self->{"override"}->{"files_version"}=$self->{"package"}->{"Version"};
 	}
