@@ -191,7 +191,9 @@ sub install {
 		if (($filestate->{$file}->{"include"} ne "filesystem") && ($filestate->{$file}->{"type"} eq "d")) {
 			$last=$file;
 		} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
-			# Do nothing
+			# Skip Files in a directory that is excluded.
+		} elsif ($filestate->{$file}->{"include"} ne "filesystem") {
+			# Skip EXCLUDED Files in a directory that is INCLUDED			
 		} else {
 			$last="";
 			if ($filestate->{$file}->{"type"} ne "d") {
