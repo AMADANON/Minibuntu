@@ -167,13 +167,13 @@ This is a future feature. TODO.
 
 Once you're happy with your box, quit out. You do not need to save; every change you make will be immediately saved.
 
-3.3.8 Build your machine
+3.3.8 Build a chroot environment, for basic testing.
+This step may be skipped.
 ./build.pl build _mybusybox
 
 This downloads the packages you have selected, unpacks them, shuffles things around as you requested, and builds a root filesystem. Please note that, due to the way that minibuntu works, many other packages may be downloaded which you don't need. The files are placed in the "target" directory, which is first removed if it exists.
 
-TODO: Build the filesystem as iso, initrd, ext2/3/4, or any other you like.
-
+TODO: This needs to be in the build process.
 Copy a file into target/ called init, make it executable, and put the following text in it:
 
 #!/bin/busybox ash
@@ -187,12 +187,13 @@ chroot target/ /init
 Which sets up a fake environment with target as the root, and then runs /bin/busybox ash (which is a shell). Everything should be as you want it, you can explore your environment, without having to wait for anything to boot up. This will only work for basic things - don't mount partitions in your new space or try to do networky things unless you know what you're doing.
 
 3.3.9 Running initrd under qemu or network boot
-Make sure your image has a file called init, in the root directory (i.e. target/init) executable, 
+Make sure your image has a file called init, in the root directory (i.e. target/init), which is executable.
 
-First, you will need an initrd filesystem. This will eventually be part of 3.3.8, until then:
+Now, we generate an initrd filesystem:
+Build the box from scratch, and output the result as an initrd-format file. The initrd format is cpio (newc format), compressed with gzip. Build does all this for us:
+./build.pl -cpio.gz build _mybusybox
 
-To build an initrd filesystem, first build the filesystem, then:
-bash -c "cd target && find . | cpio -H newc -o | gzip" > root.cpio.gz
+This will create a file called root.cpio.gz
 
 You will also need a kernel. To get the latest kernel:
 ./build get-kernel virtual
@@ -204,7 +205,7 @@ Then you can run qemu:
 
 qemu -kernel vmlinuz-(something)-virtual -initrd root.cpio.gz -append quiet
 
-Replace the (something) with the version of the kernel.
+Replace the vmlinuz-(something)-virtual with the exact filename of the kernel.
 
 If all goes well, qemu should start up, and after a few seconds (or more depending on your computer) you should see the prompt:
 

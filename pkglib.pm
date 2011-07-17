@@ -23,6 +23,24 @@ sub get {
 	return $val;
 }
 
+sub getfilesstate {
+	my ($self)=@_;
+	my ($cmd,@files,%files,%types);
+	%types=("d","dir");
+	if ($self->{"override"}->{"files_version"} ne $self->{"package"}->{"Version"}) {
+		if ((%{$self->{"package"}}>1) && (%{$self->{"override"}}==0) && (!exists $self->{"override"}->{"Package"})) {
+			$self->{"override"}->{"Package"}=$self->{"name"};
+		}
+		$cmd=$self->datatarcmd()." -tv";
+		@files=`$cmd`;
+		%files=map {if ($_=~/^((.).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*)/) {($7,{perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2})}} @files;
+		$self->{"override"}->{"files"}={%files};
+		$self->{"override"}->{"files_version"}=$self->{"package"}->{"Version"};
+	}
+	return $self->{"override"}->{"files"};
+}
+	
+
 sub getbase {
 	my ($self,$key)=@_;
 	return $self->{"package"}->{$key};
@@ -127,17 +145,57 @@ sub debfile {
 	}
 }
 
+sub decode_perms {
+	my ($self,$perms)=@_;
+	my (@perms)=split("",$perms);
+	my ($res)=0;
+	$values=[
+		{"d"=>0},
+		{"r"=>0400},
+		{"w"=>0200},
+		{"x"=>0100},
+		{"r"=>040},
+		{"w"=>020},
+		{"x"=>010},
+		{"r"=>04},
+		{"w"=>02},
+		{"x"=>01},
+	];
+	foreach (0..$#perms) {
+		if ($perms[$_] eq "-") {
+		} elsif (exists $values->[$_]->{$perms[$_]}) {
+			$res+=$values->[$_]->{$perms[$_]};
+		} else {
+			die "Unknown permissions: $perms offset $_: $perms[$_]";
+		}
+	}
+	return $res;
+}
+
 
 sub install {
 	my ($self,$source,$target)=@_;
-	my ($debfile)=$self->debfile();
-	if ($debfile) {
-		if (-f "$source/$debfile") {
-			system("ar p $source/".$self->debfile()." data.tar.gz | tar -C $target -xzf -");
+	return unless ($self->debfile());
+	my $tmptarget="install_$$";
+	system("rm -rf $tmptarget; mkdir $tmptarget");
+	system($self->datatarcmd()." -C $tmptarget -x");
+	my $filestate=$self->getfilesstate();
+	my $last="";
+	foreach $file (sort keys %$filestate) {
+		if (($filestate->{$file}->{"include"} ne "filesystem") && ($filestate->{$file}->{"type"} eq "d")) {
+			$last=$file;
+		} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
+			# Do nothing
 		} else {
-			die "Missing file debfile $debfile\n";
+			$last="";
+			if ($filestate->{$file}->{"type"} ne "d") {
+				rename("$tmptarget/$file","$target/$file");
+			} elsif (!(-d "$target/$file")) {
+				mkdir("$target/$file",$self->decode_perms($filestate->{$file}->{"perms"}));
+			}
 		}
 	}
+	system("rm -rf $tmptarget");
 }
 
 package PackageDb;

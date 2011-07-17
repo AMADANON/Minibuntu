@@ -44,7 +44,7 @@ sub edit {
 	@packages=sort {$a->{"name"} cmp $b->{"name"}} @packages;
 
 	#my ($packages,$packagenumber,@editfields);
-	@editfields=qw/Package ReverseDeps Depends Pre-Depends Provides/;
+	@editfields=qw/Package DebFiles NewFiles ReverseDeps Depends Pre-Depends Provides/;
 	while (1) {
 		#$package=$packages[&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"])];
 		$package=&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"]);
@@ -53,12 +53,48 @@ sub edit {
 		while (1) {
 			my (@menu)=map {sprintf("%-13s %s",$_,$package->get($_));} @editfields;
 			$menu[0]=sprintf("%-13s %s",$editfields[0],$package->{"name"});
-			$menu[1]=sprintf("%-13s %s",$editfields[1],join(", ",@{$package->{"rdeps"}}));
+			$menu[3]=sprintf("%-13s %s",$editfields[3],join(", ",@{$package->{"rdeps"}}));
 			$edit=&menu("Fields for package $package->{name}",[@menu,"","Back"]);
 			if ($edit>$#menu) {
 				last;
 			} elsif ($editfields[$edit] eq "Package") {
 				#TODO
+			} elsif ($editfields[$edit] eq "DebFiles") {
+				while (1) {
+					$files=$package->getfilesstate();
+					$pdb->save($package);
+					my $last="";
+					my (@menu,@filenames)=();
+					foreach (sort keys(%$files)) {
+						if (($last ne "") && (substr($_,0,length($last)) eq $last)) {
+						} elsif ($files->{$_}->{"include"} eq "none") {
+							push(@menu,"N $_");
+							push(@filenames,$_);
+							if (substr($files->{$_}->{"perms"},0,1) eq "d") {
+								$last=$_;
+							}
+						} elsif ($files->{$_}->{"include"} eq "documentation") {
+							push(@menu,"D $_");
+							push(@filenames,$_);
+							if (substr($files->{$_}->{"perms"},0,1) eq "d") {
+								$last=$_;
+							}
+						} else {
+							push(@menu,"F $_");
+							push(@filenames,$_);
+							$last="";
+						}
+					}
+					$file=&menu("Files for $package->{name}",[@menu,"","Back"],"Where to install? F=filesystem, D=documentation, N=None");
+					last if ($file>$#menu);
+					while (1) {
+						$option=&menu("Package $package->{name} File $filenames[$file]",["Install these files on the filesystem","Install these files as documentation","Don't install these files anywhere","","Back"]);
+						last if ($option==3);
+						$files->{$filenames[$file]}->{"include"}=["filesystem","documentation","none"]->[$option];
+						$pdb->save($package);
+						last;
+					}
+				}
 			} elsif (($editfields[$edit] eq "ReverseDeps") && ($#{$package->{"rdeps"}}==-1)) {
 				print "This package has no reverse dependencies\nPress enter to continue\n";
 				$edit=<>;
@@ -90,6 +126,7 @@ sub edit {
 				$package->set($edit,$newdata);
 				$pdb->save($package);
 				@packages=$pdb->render_simple_dependencies(@specified_packages);
+				@packages=sort {$a->{"name"} cmp $b->{"name"}} @packages;
 				for ($packagenumber=0; ($packagenumber<=$#packages) && ($packages[$packagenumber]->{"name"} ne $package->{"name"}); $packagenumber++) { };
 				if ($packagenumber>$#packages) {
 					die "Could not find package?!?!";
@@ -101,11 +138,18 @@ sub edit {
 }
 
 $pdb=new PackageDb($arch);
+my $output={
+	"-cpio.gz"=>sub {system("cd target && find . | cpio -H newc -o | gzip > ../root.cpio.gz"); return "root.cpio.gz";},
+	"-iso"	=>sub {system("genisoimage -o root.iso target/"); return "root.iso";},
+	"-ext2" =>sub {system("genext2fs -d target -b 10000 root.ext2"); return "root.ext2"; },
+	"-tar.gz"=>sub {system("tar -C target -cvzf root.tar.gz ."); return "root.tar.gz"; },
+};
 my $commands={
 	"help"=>sub {
 		print "$0 builddb			Reloads all the packages, builds database\n";
 		print "$0 edit <package>		Edits the package overrides\n";
-		print "$0 build <packages>		Builds the machine specified\n";
+		print "$0 build [-format] <packages>	Builds the machine specified\n";
+		print "					-format may be one of: ".join(", ",keys %$output)."\n";
 		print "$0 get-kernel <kernelversion> 	Downloads the specified kernel (e.g. generic, server, virtual)\n";
 	},
 	"builddb"=>sub {
@@ -122,8 +166,17 @@ my $commands={
 	"build"=>sub {
 		die "Before editing packages, you must rebuild the db:\n\t$0 builddb\n" unless ($pdb->checkdbm());
 		shift(@ARGV);
+		if (exists $output->{$ARGV[0]}) {
+			$output=$output->{shift(@ARGV)};
+		} else {
+			$output=undef;
+		}
 		$pdb->tie();
 		$pdb->build(@ARGV);
+		if ($output) {
+			print Dumper($output);
+			system("ls -lah ".&$output());
+		}
 	},
 	"get-kernel"=>sub {
 		die "Before fetching the kernel, you must rebuild the db:\n\t$0 builddb\n" unless ($pdb->checkdbm());
