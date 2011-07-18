@@ -1,0 +1,53 @@
+Please note that this is a goal, not a description of the current state.
+
+These are the datastructures to be used by this minibuntu system.
+
+There are two main files; override and packagedb.
+Both of these are GDBM files, stored in apt/. They can be listed with lister.pl.
+Since GDBMs do not support nested keys, the first level values are encoded with Data::Dumper(), and can be decoded with eval().
+
+packagedb=>{
+	$packagename=>{
+		$packageversion=>{
+			# "Files", if it exists, will be complete.
+			"Files" (optional)=>{
+				$filename (starting with ./)=>{
+					"Type"=>"d"irectory, "f"ile, "h"ardlink, "l"ink (symlink)
+					"Permissions"=>numeric value of permissions, IN DECIMAL
+					"Timestamp"=>numeric, unix timestamp
+					"Uid"=>may be numeric or name
+					"Guid"=>may be numeric or name
+					"Target" (hardlink/symlink only)=>What the link points to.
+					"Size"=>in bytes.
+				}
+			},
+			$sourcelist_attribute=>$sourcelist_value
+			"DataTarCompression"(optional)=>compression used for data.tar.* in deb file (e.g. "bzip2", "gzip")
+		}
+	}
+}
+
+override=>{
+	$packagename=>{
+		"Package" (optional)=>.deb package to get files from
+		"FilesVersion" (if Package is set)=>Most recent version seen
+		"Files" (optional)=>if not used, assume install all files from "Package" {
+			$targetfilename (starting with ./)=>{
+				# These all default to "Package"'s values, if they exist.
+				# If they do not, then they are not optional.
+				"Guid" (optional if Package)=>may be numeric or name,
+				"Uid" (optional if Package)=>may be numeric or name,
+				"Timestamp" (optional if Package)=>Numeric, unix timestamp
+				"SourceFilename" (optional, requires Package)=>Where to get the file; default=$targetfilename
+				"Permissions" (optional if Package)=>numeric, decimal
+				"Contents" (if no sourcefilename)=>Complete contents of file.
+				"Diff" (optional, only if sourcefilename)=>diff to apply to sourcefile.
+				"Target"=>space seperated scalar containing one or more of "filesystem", "documentation". Default="filesystem".
+			}
+		}
+	}
+}
+
+Changes in packagedb and/or override may not neccesarily be written back.
+
+reverse dependencies are not stored, since they apply only to a specific collection of packages.
