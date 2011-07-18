@@ -23,10 +23,26 @@ sub get {
 	return $val;
 }
 
+# Returns "additional" files for this package - files not in the standard dpkg, but added by the editor.
+sub getfiles {
+	my ($self)=@_;
+	unless (exists $self->{"override"}->{"newfiles"}) {
+		$self->{"override"}->{"newfiles"}={};
+	}
+	return $self->{"override"}->{"newfiles"};
+}
+
+sub updatefile {
+	my ($self,$filename,$contents,$permissions)=@_;
+	if ($permissions eq "") {
+		$permissions=0644;
+	}
+	$self->{"override"}->{"newfiles"}->{$filename}={"content"=>$contents,"permissions"=>$permissions};
+}
+
 sub getfilesstate {
 	my ($self)=@_;
 	my ($cmd,@files,%files,%types);
-	%types=("d","dir");
 	if ($self->{"override"}->{"files_version"} ne $self->{"package"}->{"Version"}) {
 		if ((%{$self->{"package"}}>1) && (%{$self->{"override"}}==0) && (!exists $self->{"override"}->{"Package"})) {
 			$self->{"override"}->{"Package"}=$self->{"name"};
@@ -38,6 +54,9 @@ sub getfilesstate {
 				$files{$7}={perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2};
 			} elsif ($_=~/^((.).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*)/) {
 				$files{$7}={perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2};
+				if ($files{$7}->{"type"} eq "-" ) {
+					$files{$7}->{"type"}="f";
+				}
 			}
 		}
 		$self->{"override"}->{"files"}={%files};
@@ -181,29 +200,36 @@ sub decode_perms {
 
 sub install {
 	my ($self,$source,$target)=@_;
-	return unless ($self->debfile());
-	my $tmptarget="install_$$";
-	system("rm -rf $tmptarget; mkdir $tmptarget");
-	system($self->datatarcmd()." -C $tmptarget -x");
-	my $filestate=$self->getfilesstate();
-	my $last="";
-	foreach $file (sort keys %$filestate) {
-		if (($filestate->{$file}->{"include"} ne "filesystem") && ($filestate->{$file}->{"type"} eq "d")) {
-			$last=$file;
-		} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
-			# Skip Files in a directory that is excluded.
-		} elsif ($filestate->{$file}->{"include"} ne "filesystem") {
-			# Skip EXCLUDED Files in a directory that is INCLUDED			
-		} else {
-			$last="";
-			if ($filestate->{$file}->{"type"} ne "d") {
-				rename("$tmptarget/$file","$target/$file");
-			} elsif (!(-d "$target/$file")) {
-				mkdir("$target/$file",$self->decode_perms($filestate->{$file}->{"perms"}));
+	if ($self->debfile()) {
+		my $tmptarget="install_$$";
+		system("rm -rf $tmptarget; mkdir $tmptarget");
+		system($self->datatarcmd()." -C $tmptarget -x");
+		my $filestate=$self->getfilesstate();
+		my $last="";
+		foreach $file (sort keys %$filestate) {
+			if (($filestate->{$file}->{"include"} ne "filesystem") && ($filestate->{$file}->{"type"} eq "d")) {
+				$last=$file;
+			} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
+				# Skip Files in a directory that is excluded.
+			} elsif ($filestate->{$file}->{"include"} ne "filesystem") {
+				# Skip EXCLUDED Files in a directory that is INCLUDED			
+			} else {
+				$last="";
+				if ($filestate->{$file}->{"type"} ne "d") {
+					rename("$tmptarget/$file","$target/$file");
+				} elsif (!(-d "$target/$file")) {
+					mkdir("$target/$file",$self->decode_perms($filestate->{$file}->{"perms"}));
+				}
 			}
 		}
+		system("rm -rf $tmptarget");
 	}
-	system("rm -rf $tmptarget");
+	foreach (keys %{$self->{"override"}->{"newfiles"}}) {
+		open(F,"> $target/$_");
+		print F $self->{"override"}->{"newfiles"}->{$_}->{"content"};
+		close(F);
+		chmod($self->{"override"}->{"newfiles"}->{$_}->{"permissions"},"$target/$_");
+	}
 }
 
 package PackageDb;

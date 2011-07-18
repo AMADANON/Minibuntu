@@ -95,6 +95,34 @@ sub edit {
 						last;
 					}
 				}
+			} elsif ($editfields[$edit] eq "NewFiles") {
+				while (1) {
+					$files=$package->getfiles();
+					@menu=(sort keys %$files);
+					$filechoice=&menu("Additional files for ".$package->{"name"},[@menu,"New File","","Back to ".$package->{"name"}]);
+					last if ($filechoice==$#menu+2);
+					if ($filechoice==$#menu+1) {
+						print "New file name: ";
+						$filename=<STDIN>;
+						chomp($filename);
+						$filecontents="";
+					} else {
+						$filename=$menu[$filechoice];
+						$filecontents=$files->{$filename};
+					}
+					system("rm -rf install_$$; mkdir install_$$");
+					open(F,">install_$$/$filename");
+					print F $filecontents;
+					close(F);
+					system("cd install_$$; vi $filename");
+					open(F,"<install_$$/$filename");
+					$filecontents=join("",<F>);
+					close(F);
+					system("rm -rf install_$$");
+					$package->updatefile($filename,$filecontents,0755);
+					$pdb->save($package);
+				}
+				
 			} elsif (($editfields[$edit] eq "ReverseDeps") && ($#{$package->{"rdeps"}}==-1)) {
 				print "This package has no reverse dependencies\nPress enter to continue\n";
 				$edit=<>;
