@@ -3,6 +3,7 @@
 
 package Package;
 use Data::Dumper;
+use Time::Local;
 
 sub new {
 	my ($type,$name,$package,$override,$debpath)=@_;
@@ -43,26 +44,57 @@ sub updatefile {
 sub getfilesstate {
 	my ($self)=@_;
 	my ($cmd,@files,%files,%types);
-	if ($self->{"override"}->{"files_version"} ne $self->{"package"}->{"Version"}) {
-		if ((%{$self->{"package"}}>1) && (%{$self->{"override"}}==0) && (!exists $self->{"override"}->{"Package"})) {
-			$self->{"override"}->{"Package"}=$self->{"name"};
-		}
-		$cmd=$self->datatarcmd()." -tv";
-		@files=`$cmd`;
-		foreach (@files) {
-			if ($_=~/^((l).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*) \-\> .*/) {
-				$files{$7}={perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2};
-			} elsif ($_=~/^((.).{9})\s+(\S+)\/(\S+)\s+(\d+)\s+([\d\-]+\s[\d\:]+)\s+(.*)/) {
-				$files{$7}={perms=>$1,uid=>$3,guid=>$4,include=>"filesystem",type=>$2};
-				if ($files{$7}->{"type"} eq "-" ) {
-					$files{$7}->{"type"}="f";
-				}
+	unless (exists $self->{"package"}->{"Files"}) {
+		open(F,$self->datatarcmd()." -tv --full-time |");
+		while ($line=<F>) {
+			if ($line=~/^(h)(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)\s(.+) link to (.*\S)/) {
+				$self->{"package"}->{"Files"}->{$12}={
+					Type=>($1 eq "-"?"f":$1),
+					Perms=>$self->decode_perms($2),
+					Uid=>$3,
+					Guid=>$4,
+					Size=>$5,
+					Date=>timelocal(${11},${10},$9,$8,$7,$6),
+					Target=>${13}
+				};
+			} elsif ($line=~/^(l)(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)\s(.+) -> (.*\S)/) {
+				$self->{"package"}->{"Files"}->{$12}={
+					Type=>($1 eq "-"?"f":$1),
+					Perms=>$self->decode_perms($2),
+					Uid=>$3,
+					Guid=>$4,
+					Size=>$5,
+					Date=>timelocal(${11},${10},$9,$8,$7,$6),
+					Target=>${13}
+				};
+			} elsif ($line=~/^([\-d])(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)\s(.*\S)/) {
+				$self->{"package"}->{"Files"}->{$12}={
+					Type=>($1 eq "-"?"f":$1),
+					Perms=>$self->decode_perms($2),
+					Uid=>$3,
+					Guid=>$4,
+					Size=>$5,
+					Date=>timelocal(${11},${10},$9,$8,$7,$6),
+				};
+			} else {
+				chomp($line);
+				die "Unable to decode tar index: $line";
 			}
 		}
-		$self->{"override"}->{"files"}={%files};
-		$self->{"override"}->{"files_version"}=$self->{"package"}->{"Version"};
+		$self->{"packages_dirty"}=1;
 	}
-	return $self->{"override"}->{"files"};
+	$result={};
+	# This makes $result a *COPY* of $self->{package}->{Files},
+	# then changes it to match the changes in $self->{overrides}
+	foreach $filename (keys %{$self->{"package"}->{"Files"}}) {
+		$result->{$filename}={%{$self->{"package"}->{"Files"}->{$filename}}};
+		if (exists $self->{"override"}->{"Files"}->{$filename}) {
+			foreach (keys %{$self->{"override"}->{"Files"}->{$filename}}) { 
+				$result->{$filename}->{$_}=$self->{"override"}->{"Files"}->{$filename}->{$_};
+			}
+		}
+	}
+	return $result;
 }
 	
 
@@ -175,7 +207,6 @@ sub decode_perms {
 	my (@perms)=split("",$perms);
 	my ($res)=0;
 	$values=[
-		{"d"=>0},
 		{"r"=>0400},
 		{"w"=>0200},
 		{"x"=>0100,"S"=>04000,"s"=>04100},
@@ -298,7 +329,15 @@ sub fetch {
 # to check
 sub save {
 	my ($self,$package)=@_;
-	$self->{"overrides"}->{$package->{"name"}}=Dumper($package->{"override"});
+	if (exists $package->{"packages_dirty"}) {
+		$tmp=eval($self->{"packages"}->{$package->{"name"}});
+		$tmp->{$package->{"package"}->{"Version"}}=$package->{"package"};
+		$self->{"packages"}->{$package->{"name"}}=Dumper($tmp);
+	}
+	if (exists $package->{"overrides_dirty"}) {
+		$self->{"overrides"}->{$package->{"name"}}=Dumper($package->{"override"});
+		delete($self->{"overrides_dirty"});
+	}
 }
 
 sub render_simple_dependencies {
