@@ -29,7 +29,7 @@ packagedb=>{
 
 override=>{
 	$packagename=>{
-		"Package" (optional)=>.deb package to get files from
+		"Package" (optional)=>.deb package to get files from - default (!exist)=$packagename, ''=>no deb file.
 		"FilesVersion" (if Package is set)=>Most recent version seen
 		"Files" (optional)=>if not used, assume install all files from "Package" {
 			$targetfilename (starting with ./)=>{
@@ -42,7 +42,8 @@ override=>{
 				"Permissions" (optional if Package)=>numeric, decimal
 				"Contents" (if no sourcefilename)=>Complete contents of file.
 				"Diff" (optional, only if sourcefilename)=>diff to apply to sourcefile.
-				"Target"=>space seperated scalar containing one or more of "filesystem", "documentation". Default="filesystem".
+				"Target" (hardlink/symlink only)=>What the link points to.
+				"Filesystem"=>space seperated scalar containing zero or more of "root", "documentation". Default (!exists)="root".
 			}
 		}
 	}

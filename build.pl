@@ -44,22 +44,31 @@ sub edit {
 	@packages=sort {$a->{"name"} cmp $b->{"name"}} @packages;
 
 	#my ($packages,$packagenumber,@editfields);
-	@editfields=qw/Package DebFiles NewFiles ReverseDeps Depends Pre-Depends Provides/;
+	@editfields=qw/Package Files NewFiles ReverseDeps Depends Pre-Depends Provides/;
 	while (1) {
 		#$package=$packages[&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"])];
 		$package=&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"]);
 		$package=$packages[$package];
 		last unless (defined $package);
 		while (1) {
-			my (@menu)=map {sprintf("%-13s %s",$_,$package->get($_));} @editfields;
-			$menu[0]=sprintf("%-13s %s",$editfields[0],$package->{"name"});
-			$menu[3]=sprintf("%-13s %s",$editfields[3],join(", ",@{$package->{"rdeps"}}));
+			my (@menu);
+			foreach (@editfields) {
+				if ($_ eq "Package") {
+					push(@menu,sprintf("%-13s %s",$_,$package->{"Package"}));
+				} elsif ($_ eq "Files") {
+					push(@menu,"Files");
+				} elsif ($_ eq "ReverseDeps") {
+					push(@menu,sprintf("%-13s %s",$editfields[3],join(", ",@{$package->{"rdeps"}})));
+				} else {
+					push(@menu,sprintf("%-13s %s",$_,$package->get($_)));
+				}
+			}
 			$edit=&menu("Fields for package $package->{name}",[@menu,"","Back"]);
 			if ($edit>$#menu) {
 				last;
 			} elsif ($editfields[$edit] eq "Package") {
 				#TODO
-			} elsif ($editfields[$edit] eq "DebFiles") {
+			} elsif ($editfields[$edit] eq "Files") {
 				while (1) {
 					$files=$package->getfilesstate();
 					$pdb->save($package);
@@ -67,32 +76,34 @@ sub edit {
 					my (@menu,@filenames)=();
 					foreach (sort keys(%$files)) {
 						if (($last ne "") && (substr($_,0,length($last)) eq $last)) {
-						} elsif ($files->{$_}->{"include"} eq "none") {
-							push(@menu,"N $_");
-							push(@filenames,$_);
-							if (substr($files->{$_}->{"perms"},0,1) eq "d") {
-								$last=$_;
-							}
-						} elsif ($files->{$_}->{"include"} eq "documentation") {
-							push(@menu,"D $_");
-							push(@filenames,$_);
-							if (substr($files->{$_}->{"perms"},0,1) eq "d") {
-								$last=$_;
-							}
-						} else {
+						} elsif ((!exists $files->{$_}->{"Target"}) || ($files->{$_}->{"Target"})) {
 							push(@menu,"F $_");
 							push(@filenames,$_);
 							$last="";
+						} elsif ($files->{$_}->{"Target"} eq "none") {
+							push(@menu,"N $_");
+							push(@filenames,$_);
+							if ($files->{$_}->{"Type"} eq "d") {
+								$last=$_;
+							}
+						} elsif ($files->{$_}->{"Target"} eq "documentation") {
+							push(@menu,"D $_");
+							push(@filenames,$_);
+							if ($files->{$_}->{"Type"} eq "d") {
+								$last=$_;
+							}
+						} else {
+							die "Unknown target";
 						}
 					}
-					$file=&menu("Files for $package->{name}",[@menu,"","Back"],"Where to install? F=filesystem, D=documentation, N=None");
-					last if ($file>$#menu);
+					$file=&menu("Files for $package->{name}",[@menu,"New File","","Back"],"Where to install? F=filesystem, D=documentation, N=None");
+					last if ($file==$#menu+2);
 					while (1) {
 						$option=&menu("Package $package->{name} File $filenames[$file]",["Install these files on the filesystem","Install these files as documentation","Don't install these files anywhere","","Back"]);
 						last if ($option==3);
-						$files->{$filenames[$file]}->{"include"}=["filesystem","documentation","none"]->[$option];
+						$package->setfileattribute($filenames[$file],"Target",["filesystem","documentation","none"]->[$option]);
 						$pdb->save($package);
-						last;
+						last; # Because there is only one thing to set about a file at the moment, and we've just set it.
 					}
 				}
 			} elsif ($editfields[$edit] eq "NewFiles") {

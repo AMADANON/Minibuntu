@@ -45,36 +45,37 @@ sub getfilesstate {
 	my ($self)=@_;
 	my ($cmd,@files,%files,%types);
 	unless (exists $self->{"package"}->{"Files"}) {
-		open(F,$self->datatarcmd()." -tv --full-time |");
+		open(F,$self->datatarcmd()." -tv |");
+		print $line;
 		while ($line=<F>) {
-			if ($line=~/^(h)(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)\s(.+) link to (.*\S)/) {
-				$self->{"package"}->{"Files"}->{$12}={
+			if ($line=~/^(h)(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+)\s(.+) link to (.*\S)/) {
+				$self->{"package"}->{"Files"}->{$11}={
 					Type=>($1 eq "-"?"f":$1),
 					Perms=>$self->decode_perms($2),
 					Uid=>$3,
 					Guid=>$4,
 					Size=>$5,
-					Date=>timelocal(${11},${10},$9,$8,$7,$6),
-					Target=>${13}
+					Date=>timelocal(0,${10},$9,$8,$7-1,$6),
+					Target=>${12}
 				};
-			} elsif ($line=~/^(l)(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)\s(.+) -> (.*\S)/) {
-				$self->{"package"}->{"Files"}->{$12}={
+			} elsif ($line=~/^(l)(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+)\s(.+) -> (.*\S)/) {
+				$self->{"package"}->{"Files"}->{$11}={
 					Type=>($1 eq "-"?"f":$1),
 					Perms=>$self->decode_perms($2),
 					Uid=>$3,
 					Guid=>$4,
 					Size=>$5,
-					Date=>timelocal(${11},${10},$9,$8,$7,$6),
-					Target=>${13}
+					Date=>timelocal(0,${10},$9,$8,$7-1,$6),
+					Target=>${12}
 				};
-			} elsif ($line=~/^([\-d])(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+):(\d+)\s(.*\S)/) {
-				$self->{"package"}->{"Files"}->{$12}={
+			} elsif ($line=~/^([\-d])(.{9})\s+(\S+)\/(\S+)\s+(\d+)\s+(\d+)-(\d+)-(\d+) (\d+):(\d+)\s(.*\S)/) {
+				$self->{"package"}->{"Files"}->{$11}={
 					Type=>($1 eq "-"?"f":$1),
 					Perms=>$self->decode_perms($2),
 					Uid=>$3,
 					Guid=>$4,
 					Size=>$5,
-					Date=>timelocal(${11},${10},$9,$8,$7,$6),
+					Date=>timelocal(0,${10},$9,$8,$7-1,$6),
 				};
 			} else {
 				chomp($line);
@@ -87,14 +88,23 @@ sub getfilesstate {
 	# This makes $result a *COPY* of $self->{package}->{Files},
 	# then changes it to match the changes in $self->{overrides}
 	foreach $filename (keys %{$self->{"package"}->{"Files"}}) {
-		$result->{$filename}={%{$self->{"package"}->{"Files"}->{$filename}}};
-		if (exists $self->{"override"}->{"Files"}->{$filename}) {
+		$result->{$filename}={%{$self->{"package"}->{"Files"}->{$filename}},Filesystem=>"root"};
+		if ((exists $self->{"override"}) && (exists $self->{"override"}->{"Files"}->{$filename})) {
 			foreach (keys %{$self->{"override"}->{"Files"}->{$filename}}) { 
 				$result->{$filename}->{$_}=$self->{"override"}->{"Files"}->{$filename}->{$_};
 			}
 		}
 	}
 	return $result;
+}
+
+sub setfileattribute {
+	my ($self,$filename,$attribute,$value)=@_;
+	if ((%{$self->{"package"}}>1) && (%{$self->{"override"}}==0) && (!exists $self->{"override"}->{"Package"})) {
+		$self->{"override"}->{"Package"}=$self->{"name"};
+	}
+	$self->{"override"}->{"Files"}->{$filename}->{$attribute}=$value;
+	$self->{"overrides_dirty"}=1;
 }
 	
 
@@ -166,6 +176,7 @@ sub set {
 	} else {
 		$self->{"override"}->{"Replace"}->{$key}->{$self->{"package"}->{$key}}=$value;
 	}
+	$self->{"overrides_dirty"}=1;
 }
 
 sub allsimpledepends {
@@ -231,30 +242,30 @@ sub decode_perms {
 
 sub install {
 	my ($self,$source,$target)=@_;
+	my $tmptarget="install_$$";
 	if ($self->debfile()) {
-		my $tmptarget="install_$$";
 		system("rm -rf $tmptarget; mkdir $tmptarget");
 		system($self->datatarcmd()." -C $tmptarget -x");
-		my $filestate=$self->getfilesstate();
-		my $last="";
-		foreach $file (sort keys %$filestate) {
-			if (($filestate->{$file}->{"include"} ne "filesystem") && ($filestate->{$file}->{"type"} eq "d")) {
-				$last=$file;
-			} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
-				# Skip Files in a directory that is excluded.
-			} elsif ($filestate->{$file}->{"include"} ne "filesystem") {
-				# Skip EXCLUDED Files in a directory that is INCLUDED			
-			} else {
-				$last="";
-				if ($filestate->{$file}->{"type"} ne "d") {
-					rename("$tmptarget/$file","$target/$file");
-				} elsif (!(-d "$target/$file")) {
-					mkdir("$target/$file",$self->decode_perms($filestate->{$file}->{"perms"}));
-				}
+	}
+	my $filestate=$self->getfilesstate();
+	my $last="";
+	foreach $file (sort keys %$filestate) {
+		if (($filestate->{$file}->{"Filesystem"} ne "root") && ($filestate->{$file}->{"Type"} eq "d")) {
+			$last=$file;
+		} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
+			# Skip Files in a directory that is excluded.
+		} elsif ($filestate->{$file}->{"Filesystem"} ne "root") {
+			# Skip EXCLUDED Files in a directory that is INCLUDED			
+		} else {
+			$last="";
+			if ($filestate->{$file}->{"Type"} ne "d") {
+				rename("$tmptarget/$file","$target/$file");
+			} elsif (!(-d "$target/$file")) {
+				mkdir("$target/$file",$filestate->{$file}->{"Perms"});
 			}
 		}
-		system("rm -rf $tmptarget");
 	}
+	system("rm -rf $tmptarget");
 	foreach (keys %{$self->{"override"}->{"newfiles"}}) {
 		open(F,"> $target/$_");
 		print F $self->{"override"}->{"newfiles"}->{$_}->{"content"};
@@ -414,6 +425,7 @@ sub build{
 	mkdir("target");
 	print "Installing packages\n";
 	foreach my $package (@packages) {
+		next unless ($package->debfile());
 		print $package->debfile()."\n";
 		$package->install($self->{"path"}."/var/cache/apt/archives","target");
 	}
