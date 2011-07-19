@@ -44,7 +44,7 @@ sub edit {
 	@packages=sort {$a->{"name"} cmp $b->{"name"}} @packages;
 
 	#my ($packages,$packagenumber,@editfields);
-	@editfields=qw/Package Files NewFiles ReverseDeps Depends Pre-Depends Provides/;
+	@editfields=qw/Package Files ReverseDeps Depends Pre-Depends Provides/;
 	while (1) {
 		#$package=$packages[&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"])];
 		$package=&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"]);
@@ -76,17 +76,17 @@ sub edit {
 					my (@menu,@filenames)=();
 					foreach (sort keys(%$files)) {
 						if (($last ne "") && (substr($_,0,length($last)) eq $last)) {
-						} elsif ((!exists $files->{$_}->{"Target"}) || ($files->{$_}->{"Target"})) {
+						} elsif ((!exists $files->{$_}->{"Filesystem"}) || ($files->{$_}->{"Filesystem"}=~/root/)) {
 							push(@menu,"F $_");
 							push(@filenames,$_);
 							$last="";
-						} elsif ($files->{$_}->{"Target"} eq "none") {
+						} elsif ($files->{$_}->{"Filesystem"} eq "none") {
 							push(@menu,"N $_");
 							push(@filenames,$_);
 							if ($files->{$_}->{"Type"} eq "d") {
 								$last=$_;
 							}
-						} elsif ($files->{$_}->{"Target"} eq "documentation") {
+						} elsif ($files->{$_}->{"Filesystem"} eq "documentation") {
 							push(@menu,"D $_");
 							push(@filenames,$_);
 							if ($files->{$_}->{"Type"} eq "d") {
@@ -97,43 +97,33 @@ sub edit {
 						}
 					}
 					$file=&menu("Files for $package->{name}",[@menu,"New File","","Back"],"Where to install? F=filesystem, D=documentation, N=None");
-					last if ($file==$#menu+2);
-					while (1) {
-						$option=&menu("Package $package->{name} File $filenames[$file]",["Install these files on the filesystem","Install these files as documentation","Don't install these files anywhere","","Back"]);
-						last if ($option==3);
-						$package->setfileattribute($filenames[$file],"Target",["filesystem","documentation","none"]->[$option]);
-						$pdb->save($package);
-						last; # Because there is only one thing to set about a file at the moment, and we've just set it.
-					}
-				}
-			} elsif ($editfields[$edit] eq "NewFiles") {
-				while (1) {
-					$files=$package->getfiles();
-					@menu=(sort keys %$files);
-					$filechoice=&menu("Additional files for ".$package->{"name"},[@menu,"New File","","Back to ".$package->{"name"}]);
-					last if ($filechoice==$#menu+2);
-					if ($filechoice==$#menu+1) {
+					if ($file==$#menu+2) {
+						last;
+					} elsif ($file==$#menu+1) {
 						print "New file name: ";
 						$filename=<STDIN>;
 						chomp($filename);
 						$filecontents="";
+						system("rm -rf install_$$; mkdir install_$$");
+						system("cd install_$$; touch $filename; vi $filename");
+						open(F,"<install_$$/$filename");
+						$filecontents=join("",<F>);
+						close(F);
+						system("rm -rf install_$$");
+						$package->setfileattribute($filename,"Permissions",0755);
+						$package->setfileattribute($filename,"Timestamp",time);
+						$package->setfileattribute($filename,"Contents",$filecontents);
+						$pdb->save($package);
 					} else {
-						$filename=$menu[$filechoice];
-						$filecontents=$files->{$filename};
+						while (1) {
+							$option=&menu("Package $package->{name} File $filenames[$file]",["Install these files on the filesystem","Install these files as documentation","Don't install these files anywhere","","Back"]);
+							last if ($option==3);
+							$package->setfileattribute($filenames[$file],"Filesystem",["root","documentation","none"]->[$option]);
+							$pdb->save($package);
+							last; # Because there is only one thing to set about a file at the moment, and we've just set it.
+						}
 					}
-					system("rm -rf install_$$; mkdir install_$$");
-					open(F,">install_$$/$filename");
-					print F $filecontents;
-					close(F);
-					system("cd install_$$; vi $filename");
-					open(F,"<install_$$/$filename");
-					$filecontents=join("",<F>);
-					close(F);
-					system("rm -rf install_$$");
-					$package->updatefile($filename,$filecontents,0755);
-					$pdb->save($package);
 				}
-				
 			} elsif (($editfields[$edit] eq "ReverseDeps") && ($#{$package->{"rdeps"}}==-1)) {
 				print "This package has no reverse dependencies\nPress enter to continue\n";
 				$edit=<>;
@@ -213,7 +203,6 @@ my $commands={
 		$pdb->tie();
 		$pdb->build(@ARGV);
 		if ($output) {
-			print Dumper($output);
 			system("ls -lah ".&$output());
 		}
 	},

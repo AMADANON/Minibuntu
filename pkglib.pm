@@ -44,7 +44,7 @@ sub updatefile {
 sub getfilesstate {
 	my ($self)=@_;
 	my ($cmd,@files,%files,%types);
-	unless (exists $self->{"package"}->{"Files"}) {
+	if ((!exists $self->{"package"}->{"Files"}) && ($self->datatarcmd())) {
 		open(F,$self->datatarcmd()." -tv |");
 		print $line;
 		while ($line=<F>) {
@@ -89,7 +89,10 @@ sub getfilesstate {
 	# then changes it to match the changes in $self->{overrides}
 	foreach $filename (keys %{$self->{"package"}->{"Files"}}) {
 		$result->{$filename}={%{$self->{"package"}->{"Files"}->{$filename}},Filesystem=>"root"};
-		if ((exists $self->{"override"}) && (exists $self->{"override"}->{"Files"}->{$filename})) {
+	}
+	#if ((exists $self->{"override"}) && (exists $self->{"override"}->{"Files"}) && (exists $self->{"override"}->{"Files"}->{$filename})) {
+	if ((exists $self->{"override"}) && (exists $self->{"override"}->{"Files"})) {
+		foreach $filename (keys %{$self->{"override"}->{"Files"}}) {
 			foreach (keys %{$self->{"override"}->{"Files"}->{$filename}}) { 
 				$result->{$filename}->{$_}=$self->{"override"}->{"Files"}->{$filename}->{$_};
 			}
@@ -145,6 +148,7 @@ sub data_compression {
 sub datatarcmd {
 	my ($self)=@_;
 	my ($comp,$flag);
+	return unless ($self->debfile());
 	$comp=$self->data_compression();
 	return "ar p ".$self->{"debpath"}.$self->debfile()." ".$self->{"datafile"}."| tar  -".$self->{"compressionflag"}."f - ";
 }
@@ -154,7 +158,7 @@ sub dirty {
 	my ($val)=$self->{"package"}->{$key};
 	if ((exists $self->{"override"}) &&
 	    (exists $self->{"override"}->{"Replace"}) &&
-	    (exists $self->{"override"}->{"Replace"}->{$key}) &&
+	Filesystem    (exists $self->{"override"}->{"Replace"}->{$key}) &&
 	    (exists $self->{"override"}->{"Replace"}->{$key}->{$val})) {
 		return 1;
 	}
@@ -250,19 +254,30 @@ sub install {
 	my $filestate=$self->getfilesstate();
 	my $last="";
 	foreach $file (sort keys %$filestate) {
-		if (($filestate->{$file}->{"Filesystem"} ne "root") && ($filestate->{$file}->{"Type"} eq "d")) {
+		if (exists $filestate->{$file}->{"Contents"}) {
+			open(F,">$target/$file");
+			print F $filestate->{$file}->{"Contents"};
+			close(F);
+			if (exists $filestate->{$file}->{"Permissions"}) {
+				chmod($filestate->{$file}->{"Permissions"},"$target/$file");
+			}
+		} elsif (($filestate->{$file}->{"Filesystem"} ne "root") && ($filestate->{$file}->{"Type"} eq "d")) {
+			# Directories, not installed - set $last to skip recurse
 			$last=$file;
 		} elsif (($last ne "") && (substr($file,0,length($last)) eq $last)) {
-			# Skip Files in a directory that is excluded.
+			# Parent directory is skipped, so skip child file/directory
 		} elsif ($filestate->{$file}->{"Filesystem"} ne "root") {
-			# Skip EXCLUDED Files in a directory that is INCLUDED			
-		} else {
+			# This non-directory is skipped.
+		} elsif ($filestate->{$file}->{"Type"} ne "d") {
+			# This non-directory is included
+			rename("$tmptarget/$file","$target/$file");
 			$last="";
-			if ($filestate->{$file}->{"Type"} ne "d") {
-				rename("$tmptarget/$file","$target/$file");
-			} elsif (!(-d "$target/$file")) {
-				mkdir("$target/$file",$filestate->{$file}->{"Perms"});
-			}
+		} elsif (!(-d "$target/$file")) {
+			# This directory is included.
+			mkdir("$target/$file",$filestate->{$file}->{"Perms"});
+			$last="";
+		} else {
+			# Directory already exists - skip
 		}
 	}
 	system("rm -rf $tmptarget");
@@ -425,8 +440,7 @@ sub build{
 	mkdir("target");
 	print "Installing packages\n";
 	foreach my $package (@packages) {
-		next unless ($package->debfile());
-		print $package->debfile()."\n";
+		print $package->{"name"}."\n";
 		$package->install($self->{"path"}."/var/cache/apt/archives","target");
 	}
 }
