@@ -110,7 +110,7 @@ sub edit {
 						$filecontents=join("",<F>);
 						close(F);
 						system("rm -rf install_$$");
-						$package->setfileattribute($filename,"Permissions",0755);
+						$package->setfileattribute($filename,"Perms",0755);
 						$package->setfileattribute($filename,"Timestamp",time);
 						$package->setfileattribute($filename,"Contents",$filecontents);
 						$pdb->save($package);

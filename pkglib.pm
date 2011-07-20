@@ -258,8 +258,8 @@ sub install {
 			open(F,">$target/$file");
 			print F $filestate->{$file}->{"Contents"};
 			close(F);
-			if (exists $filestate->{$file}->{"Permissions"}) {
-				chmod($filestate->{$file}->{"Permissions"},"$target/$file");
+			if (exists $filestate->{$file}->{"Perms"}) {
+				chmod($filestate->{$file}->{"Perms"},"$target/$file");
 			}
 		} elsif (($filestate->{$file}->{"Filesystem"} ne "root") && ($filestate->{$file}->{"Type"} eq "d")) {
 			# Directories, not installed - set $last to skip recurse
