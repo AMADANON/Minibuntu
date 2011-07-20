@@ -281,12 +281,6 @@ sub install {
 		}
 	}
 	system("rm -rf $tmptarget");
-	foreach (keys %{$self->{"override"}->{"newfiles"}}) {
-		open(F,"> $target/$_");
-		print F $self->{"override"}->{"newfiles"}->{$_}->{"content"};
-		close(F);
-		chmod($self->{"override"}->{"newfiles"}->{$_}->{"permissions"},"$target/$_");
-	}
 }
 
 package PackageDb;
