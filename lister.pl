@@ -21,7 +21,10 @@ if (($edit) && ($ARGV[1] eq "")) {
 	close(F);
 	system("vi key.txt");
 	open(F,"<key.txt");
-	$packagedb{$ARGV[1]}=Dumper(eval(join("",<F>)));
+	$tmp=eval(join("",<F>));
+	if (defined $tmp) {
+		$packagedb{$ARGV[1]}=Dumper($tmp);
+	}
 	unlink("key.txt");
 } elsif ($ARGV[1] eq "") {
 	print Dumper(\%packagedb);
