@@ -12,7 +12,7 @@ packagedb=>{
 			# "Files", if it exists, will be complete.
 			"Files" (optional)=>{
 				$filename (starting with ./)=>{
-					"Type"=>"d"irectory, "f"ile, "h"ardlink, "l"ink (symlink)
+					"Type"=>"d"irectory, "f"ile, "h"ardlink, "l"ink (symlink), "b"lock device, "c"haracter device
 					"Permissions"=>numeric value of permissions, IN DECIMAL
 					"Timestamp"=>numeric, unix timestamp
 					"Uid"=>may be numeric or name

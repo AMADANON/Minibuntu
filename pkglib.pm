@@ -254,6 +254,9 @@ sub install {
 	my $filestate=$self->getfilesstate();
 	my $last="";
 	foreach $file (sort keys %$filestate) {
+		if ($filestate->{$file}->{"Type"}=~/^[bcu]$/) {
+			system("mknod",$file,$filestate->{$file}->{"Type"},$filestate->{$file}->{"Major"},$filestate->{$file}->{"Minor"});
+		}
 		if (exists $filestate->{$file}->{"Contents"}) {
 			open(F,">$target/$file");
 			print F $filestate->{$file}->{"Contents"};
