@@ -19,6 +19,8 @@ packagedb=>{
 					"Guid"=>may be numeric or name
 					"Target" (hardlink/symlink only)=>What the link points to.
 					"Size"=>in bytes.
+					"Major" (Type="b"lock & "c"haracter only)=>Major device number
+					"Minor" (Type="b"lock & "c"haracter only)=>Minor device number
 				}
 			},
 			$sourcelist_attribute=>$sourcelist_value
