@@ -58,7 +58,7 @@ sub edit {
 				} elsif ($_ eq "Files") {
 					push(@menu,"Files");
 				} elsif ($_ eq "ReverseDeps") {
-					push(@menu,sprintf("%-13s %s",$editfields[3],join(", ",@{$package->{"rdeps"}})));
+					push(@menu,sprintf("%-13s %s",$_,join(", ",@{$package->{"rdeps"}})));
 				} else {
 					push(@menu,sprintf("%-13s %s",$_,$package->get($_)));
 				}
