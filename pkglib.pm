@@ -298,10 +298,10 @@ $Data::Dumper::Terse=1;
 $Data::Dumper::Sortkeys=1;
 
 sub new {
-	my ($type,$arch,$path)=@_;
-	unless (defined $path) { $path=getcwd."/apt/";}
-	unless (defined $arch) { $arch="i386";}
-	my $self={path=>$path,arch=>$arch,packagedbm=>"$path/packagedb.dbm",overridedbm=>"$path/override.dbm"};
+	my ($type,$settings)=@_;
+	unless (defined $settings{"arch"}) { $settings{"arch"}=`dpkg --print-architecture`; chomp($settings{"arch"});}
+	unless (defined $settings{"path"}) { $settings{"path"}=getcwd."/apt/$settings{arch}"; chomp($settings{"path"});}
+	my $self={path=>$settings{"path"},arch=>$settings{"arch"},packagedbm=>"$settings{path}/packagedb.dbm",overridedbm=>"$settings{path}/override.dbm"};
 	bless($self,$type);
 	return $self;
 }
@@ -310,8 +310,6 @@ sub checkdbm {
 	my ($self)=@_;
 	return (-e $self->{"packagedbm"});
 }
-
-
 
 sub tie {
 	my ($self,$path)=@_;
@@ -391,7 +389,9 @@ sub render_simple_dependencies {
 
 sub aptget {
 	my ($self,$command)=@_;
-	system("apt-get -o Dir::State::status=$self->{path}/var/lib/dpkg/status -o Debug::NoLocking=true -o Dir=$self->{path} -o APT::Architecture=$self->{arch} -o Dir::Etc::Trusted=$self->{path}/etc/apt/trusted.gpg $command");
+	my $fullcmd="apt-get -o Dir::State::status=$self->{path}/var/lib/dpkg/status -o Debug::NoLocking=true -o Dir=$self->{path} -o APT::Architecture=$self->{arch} -o Dir::Etc::Trusted=$self->{path}/etc/apt/trusted.gpg $command";
+	print $fullcmd."\n";
+	system($fullcmd);
 }
 
 sub setup {
@@ -432,7 +432,7 @@ sub build{
 	my @packages;
 	@packages=$self->render_simple_dependencies(@packagenames);
 	@pkgs=map {$_->{"package"}->{"Package"}} @packages;
-	$self->aptget("install --assume-yes --download-only ".join(" ",@pkgs));
+	$self->aptget("install --force-yes --assume-yes --download-only ".join(" ",@pkgs));
 	&rmtree("target");
 	mkdir("target");
 	print "Installing packages\n";

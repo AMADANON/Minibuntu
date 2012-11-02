@@ -1,40 +1,21 @@
 #!/usr/bin/perl
 $|=1;
 use pkglib;
+use ui;
 use Data::Dumper;
 $Data::Dumper::Terse=1;
 $Data::Dumper::Sortkeys=1;
 
+my %settings=(
+);
+
+
+#### Progress
 
 my $arch="i386";
 
 
 
-# Given a title, and a list of options, shows (somehow) the list, allows the user to select one,
-# and returns the number of the item selected.
-sub menu {
-	my ($title,$options,$suffix)=@_;
-	my ($line,$offset);
-	do {
-		$count=0;
-		print "\e[2J\e[H"; # Clear screen, move to (1,1).
-		print "$title:\n";
-		foreach my $index (0..$#{$options}) {
-			if ($options->[$index] eq "") {
-				print "\n";
-			} else {
-				$count++;
-				print "\t".($count)."\t$options->[$index]\n";
-			}
-		}
-		print "$suffix\n";
-		print "Option: ";
-		$choice=<STDIN>;
-		chomp($choice);
-		$choice--; # Because we want 0 based. If it's a non-number, it becomes -1.
-	} while (($choice<0) || ($choice>$count));
-	return $choice;
-}
 
 sub edit {
 	my ($pdb,@specified_packages)=@_;
@@ -47,7 +28,7 @@ sub edit {
 	@editfields=qw/Package Files ReverseDeps Depends Pre-Depends Provides/;
 	while (1) {
 		#$package=$packages[&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"])];
-		$package=&menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"]);
+		$package=&ui::menu("Packages",[(map {$_->{"name"}} @packages),"","Quit"]);
 		$package=$packages[$package];
 		last unless (defined $package);
 		while (1) {
@@ -63,7 +44,7 @@ sub edit {
 					push(@menu,sprintf("%-13s %s",$_,$package->get($_)));
 				}
 			}
-			$edit=&menu("Fields for package $package->{name}",[@menu,"","Back"]);
+			$edit=&ui::menu("Fields for package $package->{name}",[@menu,"","Back"]);
 			if ($edit>$#menu) {
 				last;
 			} elsif ($editfields[$edit] eq "Package") {
@@ -96,7 +77,7 @@ sub edit {
 							die "Unknown target";
 						}
 					}
-					$file=&menu("Files for $package->{name}",[@menu,"New File","","Back"],"Where to install? F=filesystem, D=documentation, N=None");
+					$file=&ui::menu("Files for $package->{name}",[@menu,"New File","","Back"],"Where to install? F=filesystem, D=documentation, N=None");
 					if ($file==$#menu+2) {
 						last;
 					} elsif ($file==$#menu+1) {
@@ -116,7 +97,7 @@ sub edit {
 						$pdb->save($package);
 					} else {
 						while (1) {
-							$option=&menu("Package $package->{name} File $filenames[$file]",["Install these files on the filesystem","Install these files as documentation","Don't install these files anywhere","","Back"]);
+							$option=&ui::menu("Package $package->{name} File $filenames[$file]",["Install these files on the filesystem","Install these files as documentation","Don't install these files anywhere","","Back"]);
 							last if ($option==3);
 							$package->setfileattribute($filenames[$file],"Filesystem",["root","documentation","none"]->[$option]);
 							$pdb->save($package);
@@ -133,7 +114,7 @@ sub edit {
 				if ($#rdeps==0) {
 					$redpchoice=0;
 				} else {
-					$rdepchoice=&menu("Things that depend on ".$package->{"name"},[@rdeps,"","Back to ".$package->{"name"},"Main menu"]);
+					$rdepchoice=&ui::menu("Things that depend on ".$package->{"name"},[@rdeps,"","Back to ".$package->{"name"},"Main menu"]);
 				}
 				last if ($rdepchoice==$#rdeps+2); # "Main menu"
 				if ($rdepchoice<=$#rdeps) {
@@ -166,7 +147,7 @@ sub edit {
 	}
 }
 
-$pdb=new PackageDb($arch);
+$pdb=new PackageDb($settings);
 my $output={
 	"-cpio.gz"=>sub {system("cd target && find . | cpio -H newc -o | gzip > ../root.cpio.gz"); return "root.cpio.gz";},
 	"-iso"	=>sub {system("genisoimage -o root.iso target/"); return "root.iso";},
@@ -185,6 +166,7 @@ my $commands={
 		$pdb->setup();
 		$pdb->downloadpackagelists();
 		$pdb->rebuild();
+		print "Done";
 	},
 	"edit"=>sub {
 		die "Before editing packages, you must rebuild the db:\n\t$0 builddb\n" unless ($pdb->checkdbm());
